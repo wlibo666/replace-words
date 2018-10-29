@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -19,9 +20,9 @@ var (
 func getRules(file string) ([][2]string, error) {
 	var rules [][2]string
 
-	sep := " "
+	sep := ' '
 	if *sepChar == "tab" {
-		sep = "\t"
+		sep = '\t'
 	}
 
 	fp, err := os.Open(file)
@@ -35,9 +36,9 @@ func getRules(file string) ([][2]string, error) {
 		line, err = reader.ReadString('\n')
 		if line != "" {
 			line = strings.Trim(line, "\n")
-			fields := strings.SplitN(line, sep, 2)
-			if len(fields) == 2 {
-				rule := [2]string{fields[0], fields[1]}
+			tmpField := bytes.SplitN([]byte(line), []byte{byte(sep)}, 2)
+			if len(tmpField) == 2 {
+				rule := [2]string{string(tmpField[0]), string(tmpField[1])}
 				rules = append(rules, rule)
 			}
 		}
@@ -49,27 +50,27 @@ func getRules(file string) ([][2]string, error) {
 	return rules, nil
 }
 
-func replace(rules [][2]string, file string) error {
+func replace(rules [][2]string, file string) (bool, error) {
 	if len(rules) == 0 {
-		return nil
+		return false, nil
 	}
 
 	newFile := file + ".new"
 	fileInfo, err := os.Stat(file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "stat failed,err:%s\n", err.Error())
-		return err
+		return false, err
 	}
 	fp, err := os.Open(file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open file:%s failed,err:%s\n", file, err.Error())
-		return err
+		return false, err
 	}
 	defer fp.Close()
 	newFp, err := os.OpenFile(newFile, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open file:%s failed,err:%s\n", newFile, err.Error())
-		return err
+		return false, err
 	}
 	defer newFp.Close()
 
@@ -97,7 +98,7 @@ func replace(rules [][2]string, file string) error {
 		line = ""
 	}
 	newFp.Chmod(fileInfo.Mode())
-	return nil
+	return true, nil
 }
 
 func rename(file string) error {
@@ -147,19 +148,22 @@ func main() {
 		return
 	}
 	if *debug {
+		fmt.Fprintf(os.Stdout, "replace rules:\n")
 		printRules(rules)
 	}
-	err = replace(rules, *targetFile)
+	ok, err := replace(rules, *targetFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "replace failed:%s\n", err.Error())
 		os.Exit(2)
 		return
 	}
-	err = rename(*targetFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "rename failed:%s\n", err.Error())
-		os.Exit(3)
-		return
+	if ok {
+		err = rename(*targetFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "rename failed:%s\n", err.Error())
+			os.Exit(3)
+			return
+		}
 	}
 	os.Exit(0)
 }
